@@ -1,0 +1,13 @@
+infrastructureDefinition:
+  name: Local Kubernetes TEST
+  identifier: local_k8s_test
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  environmentRef: kubernetes_test
+  deploymentType: Kubernetes
+  type: KubernetesDirect
+  spec:
+    connectorRef: REPLACE_ME_K8S_CONNECTOR
+    namespace: harness-multi-infra-lab
+    releaseName: release-<+INFRA_KEY_SHORT_ID>
+  allowSimultaneousDeployments: false

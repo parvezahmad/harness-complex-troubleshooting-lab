@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: harness-multi-infra-web
+  labels:
+    app: harness-multi-infra-web
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: harness-multi-infra-web
+  template:
+    metadata:
+      labels:
+        app: harness-multi-infra-web
+    spec:
+      containers:
+        - name: web
+          image: <+serviceVariables.k8sImage>
+          ports:
+            - containerPort: 80
+          env:
+            - name: RELEASE_VERSION
+              value: <+pipeline.variables.releaseVersion>
+          readinessProbe:
+            httpGet:
+              path: /
+              port: <+serviceVariables.readinessPort>
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

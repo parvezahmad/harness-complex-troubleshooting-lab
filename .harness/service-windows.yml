@@ -1,0 +1,9 @@
+service:
+  name: windows_iis_lab
+  identifier: windows_iis_lab
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  tags: {}
+  serviceDefinition:
+    type: WinRm
+    spec: {}

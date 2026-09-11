@@ -1,0 +1,20 @@
+service:
+  name: kubernetes_lab
+  identifier: kubernetes_lab
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  tags: {}
+  serviceDefinition:
+    type: Kubernetes
+    spec:
+      variables:
+        - name: k8sImage
+          type: String
+          description: Set to a nonexistent image/tag for K8S_BAD_IMAGE lab
+          required: false
+          value: nginx:stable-alpine
+        - name: readinessPort
+          type: String
+          description: Set to 9999 for K8S_BAD_READINESS lab
+          required: false
+          value: "80"

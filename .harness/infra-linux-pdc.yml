@@ -1,0 +1,16 @@
+infrastructureDefinition:
+  name: Linux SSH PDC
+  identifier: linux_ssh_pdc
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  environmentRef: linux_dr
+  deploymentType: Ssh
+  type: Pdc
+  spec:
+    credentialsRef: REPLACE_ME_SSH_CREDENTIAL
+    hostFilter:
+      type: All
+      spec: {}
+    hosts:
+      - REPLACE_ME_LINUX_HOST
+  allowSimultaneousDeployments: false

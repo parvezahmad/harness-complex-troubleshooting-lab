@@ -1,0 +1,2 @@
+# Reference values for the lab. The plain manifests use Harness expressions directly.
+releaseVersion: <+pipeline.variables.releaseVersion>

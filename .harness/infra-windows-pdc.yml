@@ -1,0 +1,16 @@
+infrastructureDefinition:
+  name: Windows IIS PDC 101
+  identifier: windows_iis_pdc_101
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  environmentRef: windows_dev
+  deploymentType: WinRm
+  type: Pdc
+  spec:
+    credentialsRef: REPLACE_ME_WINRM_CREDENTIAL
+    hostFilter:
+      type: All
+      spec: {}
+    hosts:
+      - 192.168.1.101
+  allowSimultaneousDeployments: false

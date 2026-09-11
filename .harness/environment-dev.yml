@@ -1,0 +1,8 @@
+environment:
+  name: Windows DEV
+  identifier: windows_dev
+  description: Windows/IIS WinRM troubleshooting environment
+  type: PreProduction
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  tags: {}

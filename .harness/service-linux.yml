@@ -1,0 +1,9 @@
+service:
+  name: linux_ssh_lab
+  identifier: linux_ssh_lab
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  tags: {}
+  serviceDefinition:
+    type: Ssh
+    spec: {}

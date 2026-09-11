@@ -1,0 +1,8 @@
+environment:
+  name: Kubernetes TEST
+  identifier: kubernetes_test
+  description: Kubernetes troubleshooting environment
+  type: PreProduction
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  tags: {}

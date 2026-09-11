@@ -1,0 +1,296 @@
+pipeline:
+  name: Multi Infra Troubleshooting Lab
+  identifier: Multi_Infra_Troubleshooting_Lab
+  projectIdentifier: Windows_patern_examples
+  orgIdentifier: default
+  tags:
+    purpose: troubleshooting-lab
+  variables:
+    - name: failureMode
+      type: String
+      description: NONE or one of the intentional lab failures documented in FAILURE-LABS.md
+      required: true
+      value: <+input>.default(NONE)
+    - name: releaseVersion
+      type: String
+      description: Lab release/version string
+      required: true
+      value: <+input>.default(v1)
+    - name: windowsHealthUrl
+      type: String
+      description: Windows IIS health endpoint
+      required: true
+      value: <+input>.default(http://192.168.1.101:8085/health.txt)
+    - name: linuxPort
+      type: String
+      description: Linux sample service port
+      required: true
+      value: <+input>.default(8086)
+  stages:
+    - stage:
+        name: Windows IIS DEV
+        identifier: Windows_IIS_DEV
+        description: Deploy and verify IIS over WinRM. Add the scripts in windows/ as Command units.
+        type: Deployment
+        spec:
+          deploymentType: WinRm
+          service:
+            serviceRef: windows_iis_lab
+          environment:
+            environmentRef: windows_dev
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: windows_iis_pdc_101
+          execution:
+            steps:
+              - step:
+                  name: Deploy IIS
+                  identifier: Deploy_IIS
+                  type: Command
+                  timeout: 10m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
+                  spec:
+                    onDelegate: false
+                    environmentVariables: []
+                    outputVariables: []
+                    commandUnits:
+                      - identifier: Deploy_IIS_PowerShell
+                        name: Deploy IIS PowerShell
+                        type: Script
+                        spec:
+                          shell: PowerShell
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                $ErrorActionPreference = "Stop"
+                                $FailureMode = "<+pipeline.variables.failureMode>"
+                                $ReleaseVersion = "<+pipeline.variables.releaseVersion>"
+                                $SiteName = "HarnessTroubleshootingLab"
+                                $AppPoolName = "HarnessTroubleshootingLabPool"
+                                $PhysicalPath = "C:\\inetpub\\HarnessTroubleshootingLab"
+                                $Port = 8085
+                                if ($FailureMode -eq "WINDOWS_SCRIPT_FAILURE") { Write-Error "INTENTIONAL LAB FAILURE"; exit 42 }
+                                Import-Module WebAdministration
+                                New-Item -ItemType Directory -Force -Path $PhysicalPath | Out-Null
+                                "<h1>Harness Windows IIS Lab</h1><p>Release: $ReleaseVersion</p><p>Host: $env:COMPUTERNAME</p>" | Set-Content -Encoding UTF8 "$PhysicalPath\\index.html"
+                                "OK - Windows IIS - $ReleaseVersion" | Set-Content -Encoding ASCII "$PhysicalPath\\health.txt"
+                                if (-not (Test-Path "IIS:\\AppPools\\$AppPoolName")) { New-WebAppPool -Name $AppPoolName | Out-Null }
+                                if (Test-Path "IIS:\\Sites\\$SiteName") { Remove-Website -Name $SiteName }
+                                New-Website -Name $SiteName -PhysicalPath $PhysicalPath -Port $Port -ApplicationPool $AppPoolName | Out-Null
+                                Start-WebAppPool -Name $AppPoolName
+                                Start-Website -Name $SiteName
+                                if ($FailureMode -eq "WINDOWS_STOP_APPPOOL") { Stop-WebAppPool -Name $AppPoolName }
+                      - identifier: Health_IIS
+                        name: Health IIS
+                        type: Script
+                        spec:
+                          shell: PowerShell
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                $ErrorActionPreference = "Stop"
+                                $url = "http://localhost:8085/health.txt"
+                                if ("<+pipeline.variables.failureMode>" -eq "WINDOWS_HEALTH_FAILURE") { $url = "http://localhost:8085/missing-health" }
+                                $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
+                                Write-Host "HTTP=$($r.StatusCode) BODY=$($r.Content.Trim())"
+                                if ($r.StatusCode -ne 200) { exit 51 }
+                                if ($r.Content -notmatch "<+pipeline.variables.releaseVersion>") { exit 52 }
+            rollbackSteps:
+              - step:
+                  name: Windows Rollback
+                  identifier: Windows_Rollback
+                  type: Command
+                  timeout: 10m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
+                  spec:
+                    onDelegate: false
+                    environmentVariables: []
+                    outputVariables: []
+                    commandUnits:
+                      - identifier: Remove_Lab_Site
+                        name: Remove Lab Site
+                        type: Script
+                        spec:
+                          shell: PowerShell
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                Import-Module WebAdministration
+                                $site="HarnessTroubleshootingLab"
+                                $pool="HarnessTroubleshootingLabPool"
+                                if (Test-Path "IIS:\\Sites\\$site") { Remove-Website -Name $site }
+                                if (Test-Path "IIS:\\AppPools\\$pool") { Remove-WebAppPool -Name $pool }
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+
+    - stage:
+        name: Promote Approval
+        identifier: Promote_Approval
+        description: Human gate before Kubernetes TEST
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Approve Promotion
+                  identifier: Approve_Promotion
+                  type: HarnessApproval
+                  timeout: 1d
+                  spec:
+                    approvalMessage: Review Windows deployment and approve Kubernetes promotion.
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      userGroups:
+                        - REPLACE_ME_APPROVER_GROUP
+                      minimumCount: 1
+                      disallowPipelineExecutor: true
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: Abort
+
+    - stage:
+        name: Kubernetes TEST
+        identifier: Kubernetes_TEST
+        description: Rolling Kubernetes deployment. Attach k8s/ manifests to kubernetes_lab service before running.
+        type: Deployment
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: kubernetes_lab
+          environment:
+            environmentRef: kubernetes_test
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: local_k8s_test
+          execution:
+            steps:
+              - step:
+                  name: K8s Rolling Deploy
+                  identifier: K8s_Rolling_Deploy
+                  type: K8sRollingDeploy
+                  timeout: 10m
+                  spec:
+                    skipDryRun: false
+            rollbackSteps:
+              - step:
+                  name: K8s Rolling Rollback
+                  identifier: K8s_Rolling_Rollback
+                  type: K8sRollingRollback
+                  timeout: 10m
+                  spec: {}
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+
+    - stage:
+        name: Linux DR
+        identifier: Linux_DR
+        description: Optional Linux/SSH stage. Keep it disabled until your SSH PDC infrastructure is ready.
+        type: Deployment
+        spec:
+          deploymentType: Ssh
+          service:
+            serviceRef: linux_ssh_lab
+          environment:
+            environmentRef: linux_dr
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: linux_ssh_pdc
+          execution:
+            steps:
+              - step:
+                  name: Deploy Linux Lab
+                  identifier: Deploy_Linux_Lab
+                  type: Command
+                  timeout: 10m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
+                  spec:
+                    onDelegate: false
+                    environmentVariables: []
+                    outputVariables: []
+                    commandUnits:
+                      - identifier: Deploy_Linux
+                        name: Deploy Linux
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                set -euo pipefail
+                                FAILURE_MODE="<+pipeline.variables.failureMode>"
+                                RELEASE="<+pipeline.variables.releaseVersion>"
+                                PORT="<+pipeline.variables.linuxPort>"
+                                APP="$HOME/harness-multi-infra-lab"
+                                if [[ "$FAILURE_MODE" == "LINUX_SCRIPT_FAILURE" ]]; then echo "INTENTIONAL LAB FAILURE" >&2; exit 61; fi
+                                mkdir -p "$APP"
+                                echo "OK - Linux - $RELEASE" > "$APP/health.txt"
+                                echo "<h1>Harness Linux Lab</h1><p>Release $RELEASE</p>" > "$APP/index.html"
+                                if [[ -f "$APP/http.pid" ]]; then kill "$(cat "$APP/http.pid")" 2>/dev/null || true; fi
+                                cd "$APP"
+                                nohup python3 -m http.server "$PORT" >http.log 2>&1 & echo $! > http.pid
+                                sleep 1
+                      - identifier: Health_Linux
+                        name: Health Linux
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                set -euo pipefail
+                                PORT="<+pipeline.variables.linuxPort>"
+                                if [[ "<+pipeline.variables.failureMode>" == "LINUX_HEALTH_FAILURE" ]]; then PORT=65530; fi
+                                curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/health.txt" | grep -F "<+pipeline.variables.releaseVersion>"
+            rollbackSteps:
+              - step:
+                  name: Linux Rollback
+                  identifier: Linux_Rollback
+                  type: Command
+                  timeout: 10m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
+                  spec:
+                    onDelegate: false
+                    environmentVariables: []
+                    outputVariables: []
+                    commandUnits:
+                      - identifier: Stop_Linux_Lab
+                        name: Stop Linux Lab
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |-
+                                APP="$HOME/harness-multi-infra-lab"
+                                if [[ -f "$APP/http.pid" ]]; then kill "$(cat "$APP/http.pid")" 2>/dev/null || true; rm -f "$APP/http.pid"; fi
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback

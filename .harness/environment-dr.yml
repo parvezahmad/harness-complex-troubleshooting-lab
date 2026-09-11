@@ -1,0 +1,8 @@
+environment:
+  name: Linux DR
+  identifier: linux_dr
+  description: Linux SSH troubleshooting environment
+  type: PreProduction
+  orgIdentifier: default
+  projectIdentifier: Windows_patern_examples
+  tags: {}
